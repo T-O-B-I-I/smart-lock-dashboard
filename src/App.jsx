@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock, UserPlus, Fingerprint, Wifi, WifiOff, ShieldCheck, Clock, History, AlertTriangle, Settings, Save, X, Globe, Trash2 } from 'lucide-react';
+import { Lock, Unlock, UserPlus, Fingerprint, Wifi, WifiOff, ShieldCheck, Clock, History, AlertTriangle, Settings, Save, X, Globe, Trash2, Key, LogOut } from 'lucide-react';
+
+// ================= SECURITY =================
+// Change this to whatever PIN you want!
+const SECURE_PIN = "162534"; 
+// ============================================
 
 const App = () => {
+  // --- AUTHENTICATION STATE ---
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('smartlock_auth') === 'true';
+  });
+  const [pinInput, setPinInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+
   // --- STATE FOR BLYNK CONFIGURATION ---
   const [config, setConfig] = useState(() => {
     return {
@@ -10,7 +22,7 @@ const App = () => {
     };
   });
   
-  // --- STATE FOR LOGS (NOW WITH LOCALSTORAGE) ---
+  // --- STATE FOR LOGS ---
   const [logs, setLogs] = useState(() => {
     const savedLogs = localStorage.getItem('smartlock_logs');
     return savedLogs ? JSON.parse(savedLogs) : [];
@@ -26,19 +38,41 @@ const App = () => {
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    checkDeviceStatus();
     
-    const statusInterval = setInterval(() => {
+    // Only check status if logged in
+    if (isAuthenticated) {
       checkDeviceStatus();
-    }, 5000); 
+      const statusInterval = setInterval(() => {
+        checkDeviceStatus();
+      }, 5000); 
+      return () => {
+        clearInterval(timer);
+        clearInterval(statusInterval);
+      };
+    }
     
-    return () => {
-      clearInterval(timer);
-      clearInterval(statusInterval);
-    };
-  }, [config]);
+    return () => clearInterval(timer);
+  }, [config, isAuthenticated]);
 
-  // --- UPDATED ADD LOG FUNCTION WITH DATE STAMP ---
+  // --- LOGIN LOGIC ---
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (pinInput === SECURE_PIN) {
+      setIsAuthenticated(true);
+      localStorage.setItem('smartlock_auth', 'true');
+      setAuthError(false);
+      setPinInput('');
+    } else {
+      setAuthError(true);
+      setPinInput('');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('smartlock_auth');
+  };
+
   const addLog = (message) => {
     const now = new Date();
     const newLog = {
@@ -48,15 +82,13 @@ const App = () => {
       message
     };
     
-    // Update state and save to localStorage simultaneously
     setLogs(prev => {
-      const updatedLogs = [newLog, ...prev].slice(0, 15); // Keeps the last 15 logs
+      const updatedLogs = [newLog, ...prev].slice(0, 15);
       localStorage.setItem('smartlock_logs', JSON.stringify(updatedLogs));
       return updatedLogs;
     });
   };
 
-  // --- NEW CLEAR LOG FUNCTION ---
   const clearLogs = () => {
     setLogs([]);
     localStorage.removeItem('smartlock_logs');
@@ -85,7 +117,6 @@ const App = () => {
 
   const checkDeviceStatus = async () => {
     if (!config.token || config.token === "") return;
-    
     try {
       let endpoint = `https://${activeHost}/external/api/isHardwareConnected?token=${config.token}`;
       const response = await fetch(endpoint);
@@ -96,10 +127,8 @@ const App = () => {
         setStatus('offline');
         return;
       }
-
       setApiError(null);
       setStatus(text === "true" ? 'online' : 'offline');
-      
     } catch (error) {
       console.error("[Blynk Network Error]", error);
       setApiError(`Network Error connecting to Blynk servers.`);
@@ -110,11 +139,9 @@ const App = () => {
   const callBlynkPin = async (actionName, pin) => {
     if (status !== 'online') return;
     setLoading(true);
-
     try {
       let endpoint = `https://${activeHost}/external/api/update?token=${config.token}&${pin}=1`;
       const response = await fetch(endpoint);
-      
       if (response.ok) {
         addLog(`Success: ${actionName}`);
       } else {
@@ -128,19 +155,63 @@ const App = () => {
     }
   };
 
+  // ==========================================
+  // LOCK SCREEN VIEW
+  // ==========================================
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4 selection:bg-blue-500/30 font-sans">
+        <div className="bg-slate-800/80 p-10 rounded-[2.5rem] shadow-2xl border border-slate-700/50 max-w-sm w-full text-center relative overflow-hidden backdrop-blur-xl animate-in zoom-in-95 duration-500">
+          <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+            <ShieldCheck size={48} className="text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-slate-100 mb-2 tracking-tight">Secure Access</h1>
+          <p className="text-slate-400 text-sm mb-8">Enter your PIN to access the terminal.</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <Key className="absolute left-4 top-3.5 text-slate-500" size={18} />
+              <input 
+                type="password" 
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="••••••" 
+                className={`w-full bg-slate-900/80 border ${authError ? 'border-rose-500 focus:border-rose-400' : 'border-slate-700 focus:border-blue-500'} rounded-xl pl-12 pr-4 py-3 text-center tracking-[0.5em] font-bold text-lg text-slate-100 outline-none transition-all placeholder:tracking-normal placeholder:font-normal`}
+                autoFocus
+              />
+            </div>
+            {authError && <p className="text-rose-400 text-xs font-medium animate-in slide-in-from-top-1">Incorrect PIN. Try again.</p>}
+            <button 
+              type="submit" 
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-white transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+            >
+              Unlock Terminal
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // MAIN DASHBOARD VIEW
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-4 md:p-8 font-sans selection:bg-blue-500/30">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto animate-in fade-in duration-700">
         {/* Header Section */}
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 bg-slate-800/50 backdrop-blur-md p-6 rounded-3xl shadow-2xl border border-slate-700/50 relative overflow-hidden">
           <div className="space-y-1">
             <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">
               Smart Lock Terminal
             </h1>
-            <div className="flex items-center gap-3 text-slate-400 text-sm font-medium">
+            <div className="flex flex-wrap items-center gap-4 text-slate-400 text-sm font-medium">
               <span className="flex items-center gap-1.5"><Clock size={14} className="text-blue-400" /> {currentTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
               <button onClick={() => setShowSettings(true)} className="flex items-center gap-1.5 hover:text-blue-400 transition-colors">
                 <Settings size={14} /> Configure
+              </button>
+              <button onClick={handleLogout} className="flex items-center gap-1.5 text-rose-400/80 hover:text-rose-400 transition-colors">
+                <LogOut size={14} /> Lock Terminal
               </button>
             </div>
           </div>
