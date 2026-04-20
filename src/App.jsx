@@ -38,11 +38,13 @@ const App = () => {
     };
   }, [config]);
 
-  // --- UPDATED ADD LOG FUNCTION ---
+  // --- UPDATED ADD LOG FUNCTION WITH DATE STAMP ---
   const addLog = (message) => {
+    const now = new Date();
     const newLog = {
       id: Date.now(),
-      time: new Date().toLocaleTimeString(),
+      time: now.toLocaleTimeString(),
+      date: now.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
       message
     };
     
@@ -249,7 +251,14 @@ const App = () => {
                   logs.map(log => (
                     <div key={log.id} className="flex justify-between items-center p-3.5 bg-slate-900/60 rounded-xl border border-slate-700/30 animate-in fade-in slide-in-from-right-2">
                       <span className="text-slate-300 text-sm font-medium">{log.message}</span>
-                      <span className="text-[10px] font-mono text-slate-500 bg-black/20 px-2 py-0.5 rounded uppercase">{log.time}</span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[9px] font-mono text-slate-500 uppercase leading-none">
+                          {log.date || new Date(log.id).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 bg-black/20 px-2 py-0.5 rounded uppercase leading-none">
+                          {log.time}
+                        </span>
+                      </div>
                     </div>
                   ))
                 )}
