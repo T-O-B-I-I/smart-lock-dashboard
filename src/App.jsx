@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock, UserPlus, Fingerprint, Wifi, WifiOff, ShieldCheck, Clock, History, AlertTriangle, Settings, Save, X, Globe } from 'lucide-react';
+import { Lock, Unlock, UserPlus, Fingerprint, Wifi, WifiOff, ShieldCheck, Clock, History, AlertTriangle, Settings, Save, X, Globe, Trash2 } from 'lucide-react';
 
 const App = () => {
   // --- STATE FOR BLYNK CONFIGURATION ---
   const [config, setConfig] = useState(() => {
     return {
       token: localStorage.getItem('blynk_token') || "QL5cLTOwPI4luF4yiUoo2sUsWG-iQlPo",
-      host: localStorage.getItem('blynk_host') || "blr1.blynk.cloud" // blr1 is usually the India/Asia server
+      host: localStorage.getItem('blynk_host') || "blr1.blynk.cloud" 
     };
   });
   
+  // --- STATE FOR LOGS (NOW WITH LOCALSTORAGE) ---
+  const [logs, setLogs] = useState(() => {
+    const savedLogs = localStorage.getItem('smartlock_logs');
+    return savedLogs ? JSON.parse(savedLogs) : [];
+  });
+
   const [showSettings, setShowSettings] = useState(false);
   const [status, setStatus] = useState('offline');
   const [loading, setLoading] = useState(false);
-  const [logs, setLogs] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [apiError, setApiError] = useState(null);
 
@@ -25,7 +30,7 @@ const App = () => {
     
     const statusInterval = setInterval(() => {
       checkDeviceStatus();
-    }, 5000); // Check every 5 seconds for Blynk
+    }, 5000); 
     
     return () => {
       clearInterval(timer);
@@ -33,13 +38,26 @@ const App = () => {
     };
   }, [config]);
 
+  // --- UPDATED ADD LOG FUNCTION ---
   const addLog = (message) => {
     const newLog = {
       id: Date.now(),
       time: new Date().toLocaleTimeString(),
       message
     };
-    setLogs(prev => [newLog, ...prev].slice(0, 8));
+    
+    // Update state and save to localStorage simultaneously
+    setLogs(prev => {
+      const updatedLogs = [newLog, ...prev].slice(0, 15); // Keeps the last 15 logs
+      localStorage.setItem('smartlock_logs', JSON.stringify(updatedLogs));
+      return updatedLogs;
+    });
+  };
+
+  // --- NEW CLEAR LOG FUNCTION ---
+  const clearLogs = () => {
+    setLogs([]);
+    localStorage.removeItem('smartlock_logs');
   };
 
   const saveConfig = (e) => {
@@ -60,16 +78,14 @@ const App = () => {
     setConfig(newConfig);
     setShowSettings(false);
     setApiError(null);
-    addLog("Blynk Config Updated");
+    addLog("Settings Updated");
   };
 
   const checkDeviceStatus = async () => {
     if (!config.token || config.token === "") return;
     
     try {
-      // Blynk API to check if hardware is online
       let endpoint = `https://${activeHost}/external/api/isHardwareConnected?token=${config.token}`;
-
       const response = await fetch(endpoint);
       const text = await response.text();
       
@@ -80,12 +96,11 @@ const App = () => {
       }
 
       setApiError(null);
-      // Blynk returns literal string "true" or "false"
       setStatus(text === "true" ? 'online' : 'offline');
       
     } catch (error) {
       console.error("[Blynk Network Error]", error);
-      setApiError(`Network Error. If your computer year is still 2026, the browser may block this.`);
+      setApiError(`Network Error connecting to Blynk servers.`);
       setStatus('offline');
     }
   };
@@ -95,9 +110,7 @@ const App = () => {
     setLoading(true);
 
     try {
-      // Blynk API to write a '1' to a Virtual Pin
       let endpoint = `https://${activeHost}/external/api/update?token=${config.token}&${pin}=1`;
-
       const response = await fetch(endpoint);
       
       if (response.ok) {
@@ -218,10 +231,17 @@ const App = () => {
               </div>
             </div>
 
-            <div className="bg-slate-800/80 p-7 rounded-[2.5rem] border border-slate-700/50 shadow-2xl flex-grow flex flex-col min-h-[300px]">
-              <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2 px-1">
-                <History size={16} className="text-blue-500" /> Event Log
-              </h3>
+            <div className="bg-slate-800/80 p-7 rounded-[2.5rem] border border-slate-700/50 shadow-2xl flex-grow flex flex-col min-h-[300px] relative">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
+                  <History size={16} className="text-blue-500" /> Event Log
+                </h3>
+                {logs.length > 0 && (
+                  <button onClick={clearLogs} className="text-slate-500 hover:text-rose-400 transition-colors p-1" title="Clear History">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
               <div className="space-y-3 overflow-y-auto max-h-[300px]">
                 {logs.length === 0 ? (
                   <p className="text-xs text-slate-600 italic text-center py-10">No events recorded</p>
